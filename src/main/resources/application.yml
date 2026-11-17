@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: nordia-meeting-rooms
+  datasource:
+    url: jdbc:sqlite:nordia.db?foreign_keys=on&transaction_mode=IMMEDIATE&busy_timeout=5000
+  sql:
+    init:
+      mode: always
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+
+nordia:
+  booking:
+    zone: Europe/Paris
+    opening-start: "08:00"
+    opening-end: "19:00"
+    min-duration: 15m
+    max-duration: 4h
+    max-active-per-organiser-per-day: 3
