@@ -169,6 +169,57 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.code").value("BOOKING_NOT_FOUND"));
     }
 
+    @Test
+    void refuses_a_token_after_the_user_logged_out() throws Exception {
+        String token = tokenFor("alice@nordia.com", "alice123");
+        mockMvc.perform(get("/api/bookings/999").header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/bookings/999").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
+    void revokes_only_the_token_used_to_log_out() throws Exception {
+        String first = tokenFor("bob@nordia.com", "bob123");
+        String second = tokenFor("bob@nordia.com", "bob123");
+
+        mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + first))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/bookings/999").header("Authorization", "Bearer " + second))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void refuses_to_log_out_twice_with_the_same_token() throws Exception {
+        String token = tokenFor("carol@nordia.com", "carol123");
+        mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    @Test
+    void refuses_to_log_out_without_a_token() throws Exception {
+        mockMvc.perform(post("/api/auth/logout"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
+    }
+
+    private String tokenFor(String email, String password) throws Exception {
+        String body = login(email, password).andReturn().getResponse().getContentAsString();
+        return JsonPath.read(body, "$.accessToken");
+    }
+
     private ResultActions login(String email, String password) throws Exception {
         return mockMvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\":\"%s\",\"password\":\"%s\"}".formatted(email, password)));

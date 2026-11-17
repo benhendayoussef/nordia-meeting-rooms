@@ -21,6 +21,8 @@ nordia:
   jwt:
     secret: ${NORDIA_JWT_SECRET:}
     expiration: 1h
+  security:
+    token-blacklist: memory
   demo-users:
     - email: alice@nordia.com
       password: alice123

@@ -35,6 +35,7 @@ class JwtUtilsTest {
         assertThat(UUID.fromString(claims.getId())).isNotNull();
         assertThat(claims.getExpiration().toInstant()).isEqualTo(NOW.plus(Duration.ofHours(1)));
         assertThat(jwtUtils.extractEmail(token)).isEqualTo("alice@nordia.com");
+        assertThat(jwtUtils.extractId(token)).isEqualTo(claims.getId());
         assertThat(jwtUtils.extractExpiration(token)).isEqualTo(NOW.plus(Duration.ofHours(1)));
     }
 

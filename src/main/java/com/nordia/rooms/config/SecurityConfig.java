@@ -1,5 +1,6 @@
 package com.nordia.rooms.config;
 
+import com.nordia.rooms.jwt.JwtBlacklistService;
 import com.nordia.rooms.jwt.JwtFilter;
 import com.nordia.rooms.util.JwtUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -25,11 +26,14 @@ public class SecurityConfig {
 
     private final JwtUtils jwtUtils;
 
+    private final JwtBlacklistService jwtBlacklistService;
+
     private final HandlerExceptionResolver exceptionResolver;
 
-    public SecurityConfig(JwtUtils jwtUtils,
+    public SecurityConfig(JwtUtils jwtUtils, JwtBlacklistService jwtBlacklistService,
                           @Qualifier("handlerExceptionResolver") HandlerExceptionResolver exceptionResolver) {
         this.jwtUtils = jwtUtils;
+        this.jwtBlacklistService = jwtBlacklistService;
         this.exceptionResolver = exceptionResolver;
     }
 
@@ -48,7 +52,7 @@ public class SecurityConfig {
                         .authenticationEntryPoint(authenticationEntryPoint())
                         .accessDeniedHandler(accessDeniedHandler())
                 )
-                .addFilterBefore(new JwtFilter(jwtUtils), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(new JwtFilter(jwtUtils, jwtBlacklistService), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 

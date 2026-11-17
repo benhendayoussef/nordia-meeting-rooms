@@ -51,6 +51,10 @@ public class JwtUtils {
         return jwtParser.parseSignedClaims(token).getPayload().getSubject();
     }
 
+    public String extractId(String token) {
+        return jwtParser.parseSignedClaims(token).getPayload().getId();
+    }
+
     public Instant extractExpiration(String token) {
         return jwtParser.parseSignedClaims(token).getPayload().getExpiration().toInstant();
     }
