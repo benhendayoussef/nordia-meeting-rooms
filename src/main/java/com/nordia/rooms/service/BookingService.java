@@ -3,13 +3,16 @@ package com.nordia.rooms.service;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Locale;
 
 import com.nordia.rooms.config.BookingPolicy;
 import com.nordia.rooms.dtos.request.BookingRequest;
 import com.nordia.rooms.exceptions.BadRequestException;
 import com.nordia.rooms.exceptions.ConflictException;
+import com.nordia.rooms.exceptions.ForbiddenException;
 import com.nordia.rooms.exceptions.ResourceNotFoundException;
 import com.nordia.rooms.model.Booking;
+import com.nordia.rooms.model.BookingStatus;
 import com.nordia.rooms.model.NewBooking;
 import com.nordia.rooms.repository.BookingRepository;
 import com.nordia.rooms.service.rules.BookingRule;
@@ -57,6 +60,25 @@ public class BookingService {
 
     public Booking getById(long id) {
         return bookings.findById(id).orElseThrow(() -> ResourceNotFoundException.bookingNotFound(id));
+    }
+
+    // A single conditional UPDATE decides; the booking is only read afterwards to explain why nothing changed.
+    @Transactional
+    public void cancel(long id, String organiserEmail) {
+        String organiser = organiserEmail.trim().toLowerCase(Locale.ROOT);
+        if (bookings.cancel(id, organiser, clock.instant())) {
+            return;
+        }
+
+        Booking booking = getById(id);
+        if (!booking.organiser().equals(organiser)) {
+            throw new ForbiddenException("NOT_ORGANISER", "Only the organiser can cancel this booking.");
+        }
+        if (booking.status() == BookingStatus.CANCELLED) {
+            return;
+        }
+        throw new ConflictException("BOOKING_ALREADY_STARTED",
+                "Booking %d has already started and can no longer be cancelled.".formatted(id));
     }
 
     private void requireWholeMinute(String field, OffsetDateTime time) {

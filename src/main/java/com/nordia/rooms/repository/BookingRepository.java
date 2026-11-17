@@ -50,6 +50,25 @@ public class BookingRepository {
         return findById(id).orElseThrow();
     }
 
+    // Returns false when nothing matched: unknown id, other organiser, already cancelled or already started.
+    public boolean cancel(long id, String organiser, Instant now) {
+        int updated = jdbc.sql("""
+                        UPDATE booking
+                        SET status = :cancelled, cancelled_at = :now
+                        WHERE id = :id
+                          AND organiser = :organiser
+                          AND status = :active
+                          AND start_at > :now
+                        """)
+                .param("cancelled", BookingStatus.CANCELLED.name())
+                .param("active", BookingStatus.ACTIVE.name())
+                .param("now", UTC_TEXT.format(now))
+                .param("id", id)
+                .param("organiser", organiser)
+                .update();
+        return updated == 1;
+    }
+
     public Optional<Booking> findById(long id) {
         return jdbc.sql("""
                         SELECT id, room_id, start_at, end_at, organiser, subject, status
