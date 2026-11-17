@@ -1,0 +1,11 @@
+build/
+.gradle/
+.git/
+*.db
+*.db-journal
+.idea/
+*.iml
+.vscode/
+.claude/
+CLAUDE.md
+HELP.md
