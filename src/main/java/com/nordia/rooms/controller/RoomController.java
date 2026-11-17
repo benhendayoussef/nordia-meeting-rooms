@@ -7,6 +7,9 @@ import com.nordia.rooms.dtos.response.BookingResponse;
 import com.nordia.rooms.dtos.response.RoomResponse;
 import com.nordia.rooms.service.BookingService;
 import com.nordia.rooms.service.RoomService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Positive;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/rooms")
+@Tag(name = "Rooms")
 public class RoomController {
 
     private final RoomService roomService;
@@ -28,6 +32,9 @@ public class RoomController {
     }
 
     @GetMapping
+    @Operation(summary = "List rooms", description = "Sorted by name; without minCapacity every room is returned.")
+    @ApiResponse(responseCode = "200", description = "The matching rooms")
+    @ApiResponse(responseCode = "400", description = "minCapacity is not a positive integer: VALIDATION_ERROR")
     public List<RoomResponse> list(@RequestParam(defaultValue = "1") @Positive int minCapacity) {
         return roomService.findByMinCapacity(minCapacity).stream()
                 .map(RoomResponse::from)
@@ -35,6 +42,11 @@ public class RoomController {
     }
 
     @GetMapping("/{roomId}/bookings")
+    @Operation(summary = "List a room's active bookings for one day",
+            description = "The date is an office-time date. Cancelled bookings are not listed.")
+    @ApiResponse(responseCode = "200", description = "The bookings of that day, sorted by start; empty if there are none")
+    @ApiResponse(responseCode = "400", description = "The date is missing or not a valid yyyy-MM-dd date")
+    @ApiResponse(responseCode = "404", description = "The room does not exist: ROOM_NOT_FOUND")
     public List<BookingResponse> bookingsOn(@PathVariable int roomId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         return bookingService.findActiveForRoomOn(roomId, date).stream()
