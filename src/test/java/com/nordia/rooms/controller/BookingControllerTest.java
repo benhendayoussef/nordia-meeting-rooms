@@ -24,10 +24,13 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
-import static org.hamcrest.Matchers.endsWith;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.matchesPattern;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -72,8 +75,8 @@ class BookingControllerTest {
     void creates_a_booking_that_can_be_read_back() throws Exception {
         String location = createBooking("2026-11-17T09:00:00+01:00", "2026-11-17T10:00:00+01:00")
                 .andExpect(status().isCreated())
-                .andExpect(header().string("Location", endsWith("/api/bookings/1")))
-                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(header().string("Location", matchesPattern(".*/api/bookings/\\d+")))
+                .andExpect(jsonPath("$.id").isNumber())
                 .andExpect(jsonPath("$.roomId").value(1))
                 .andExpect(jsonPath("$.start").value("2026-11-17T09:00:00+01:00"))
                 .andExpect(jsonPath("$.end").value("2026-11-17T10:00:00+01:00"))
@@ -271,10 +274,123 @@ class BookingControllerTest {
                 .andExpect(jsonPath("$.detail").value("Booking 42 does not exist."));
     }
 
+    @ParameterizedTest
+    @CsvSource({
+            "partial left, 2026-11-17T08:30:00+01:00, 2026-11-17T09:30:00+01:00",
+            "partial right, 2026-11-17T09:30:00+01:00, 2026-11-17T10:30:00+01:00",
+            "inside, 2026-11-17T09:15:00+01:00, 2026-11-17T09:45:00+01:00",
+            "around, 2026-11-17T08:00:00+01:00, 2026-11-17T11:00:00+01:00",
+            "identical, 2026-11-17T09:00:00+01:00, 2026-11-17T10:00:00+01:00"
+    })
+    void refuses_a_booking_that_overlaps_an_existing_one(String shape, String start, String end) throws Exception {
+        book(1, "bob.durand@nordia.com", "2026-11-17T09:00:00+01:00", "2026-11-17T10:00:00+01:00")
+                .andExpect(status().isCreated());
+
+        book(1, "anna.martin@nordia.com", start, end)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("BOOKING_OVERLAP"))
+                .andExpect(jsonPath("$.detail").value("Room 1 is already booked from 09:00 to 10:00 on 2026-11-17."))
+                .andExpect(content().string(not(containsString("bob.durand"))));
+    }
+
+    @Test
+    void accepts_bookings_that_touch_in_the_same_room() throws Exception {
+        book(1, "anna.martin@nordia.com", "2026-11-17T09:00:00+01:00", "2026-11-17T10:00:00+01:00")
+                .andExpect(status().isCreated());
+        book(1, "bob.durand@nordia.com", "2026-11-17T10:00:00+01:00", "2026-11-17T11:00:00+01:00")
+                .andExpect(status().isCreated());
+        book(1, "carla.petit@nordia.com", "2026-11-17T08:00:00+01:00", "2026-11-17T09:00:00+01:00")
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void accepts_the_same_time_in_another_room() throws Exception {
+        book(1, "anna.martin@nordia.com", "2026-11-17T09:00:00+01:00", "2026-11-17T10:00:00+01:00")
+                .andExpect(status().isCreated());
+        book(2, "bob.durand@nordia.com", "2026-11-17T09:00:00+01:00", "2026-11-17T10:00:00+01:00")
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void ignores_cancelled_bookings_when_checking_for_overlap() throws Exception {
+        insertCancelledBooking(1, "bob.durand@nordia.com", "2026-11-17T08:00:00Z", "2026-11-17T09:00:00Z");
+
+        book(1, "anna.martin@nordia.com", "2026-11-17T09:00:00+01:00", "2026-11-17T10:00:00+01:00")
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void refuses_a_fourth_booking_on_the_same_day() throws Exception {
+        bookThreeTimesOn17th("anna.martin@nordia.com");
+
+        book(1, "anna.martin@nordia.com", "2026-11-17T12:00:00+01:00", "2026-11-17T13:00:00+01:00")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DAILY_LIMIT_REACHED"))
+                .andExpect(jsonPath("$.detail").value(
+                        "anna.martin@nordia.com already has 3 bookings on 2026-11-17, which is the daily maximum."));
+    }
+
+    @Test
+    void accepts_a_booking_for_the_same_organiser_on_another_day() throws Exception {
+        bookThreeTimesOn17th("anna.martin@nordia.com");
+
+        book(1, "anna.martin@nordia.com", "2026-11-18T09:00:00+01:00", "2026-11-18T10:00:00+01:00")
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void counts_the_organiser_email_without_regard_to_case() throws Exception {
+        bookThreeTimesOn17th("alice@nordia.com");
+
+        book(1, "Alice@Nordia.com", "2026-11-17T12:00:00+01:00", "2026-11-17T13:00:00+01:00")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DAILY_LIMIT_REACHED"));
+    }
+
+    @Test
+    void does_not_count_cancelled_bookings_towards_the_daily_limit() throws Exception {
+        insertCancelledBooking(1, "anna.martin@nordia.com", "2026-11-17T12:00:00Z", "2026-11-17T13:00:00Z");
+        bookThreeTimesOn17th("anna.martin@nordia.com");
+    }
+
+    @Test
+    void reports_an_overlap_before_the_daily_limit() throws Exception {
+        bookThreeTimesOn17th("anna.martin@nordia.com");
+
+        book(1, "anna.martin@nordia.com", "2026-11-17T09:30:00+01:00", "2026-11-17T10:30:00+01:00")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("BOOKING_OVERLAP"));
+    }
+
+    private void bookThreeTimesOn17th(String organiser) throws Exception {
+        for (int hour = 9; hour <= 11; hour++) {
+            book(1, organiser, "2026-11-17T%02d:00:00+01:00".formatted(hour),
+                    "2026-11-17T%02d:00:00+01:00".formatted(hour + 1))
+                    .andExpect(status().isCreated());
+        }
+    }
+
+    private void insertCancelledBooking(int roomId, String organiser, String startUtc, String endUtc) {
+        jdbc.sql("""
+                        INSERT INTO booking (room_id, start_at, end_at, booking_date, organiser, subject, status, created_at)
+                        VALUES (:roomId, :startAt, :endAt, '2026-11-17', :organiser, 'Cancelled', 'CANCELLED',
+                                '2026-11-16T06:00:00Z')
+                        """)
+                .param("roomId", roomId)
+                .param("startAt", startUtc)
+                .param("endAt", endUtc)
+                .param("organiser", organiser)
+                .update();
+    }
+
     private ResultActions createBooking(String start, String end) throws Exception {
+        return book(1, "anna.martin@nordia.com", start, end);
+    }
+
+    private ResultActions book(int roomId, String organiser, String start, String end) throws Exception {
         return postJson("""
-                {"roomId":1,"start":"%s","end":"%s","organiser":"anna.martin@nordia.com","subject":"Planning"}
-                """.formatted(start, end));
+                {"roomId":%d,"start":"%s","end":"%s","organiser":"%s","subject":"Planning"}
+                """.formatted(roomId, start, end, organiser));
     }
 
     private ResultActions postJson(String json) throws Exception {

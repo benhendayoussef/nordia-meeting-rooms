@@ -7,6 +7,7 @@ import java.util.List;
 import com.nordia.rooms.config.BookingPolicy;
 import com.nordia.rooms.dtos.request.BookingRequest;
 import com.nordia.rooms.exceptions.BadRequestException;
+import com.nordia.rooms.exceptions.ConflictException;
 import com.nordia.rooms.exceptions.ResourceNotFoundException;
 import com.nordia.rooms.model.Booking;
 import com.nordia.rooms.model.NewBooking;
@@ -33,6 +34,8 @@ public class BookingService {
         this.clock = clock;
     }
 
+    // The connection starts IMMEDIATE transactions, so the checks and the insert
+    // run under SQLite's write lock and two requests cannot book the same slot.
     @Transactional
     public Booking create(BookingRequest request) {
         requireWholeMinute("start", request.start());
@@ -46,6 +49,8 @@ public class BookingService {
                 request.organiser(),
                 request.subject());
         rules.forEach(rule -> rule.check(booking));
+        requireNoOverlap(booking);
+        requireDailyLimitNotReached(booking);
 
         return bookings.insert(booking, clock.instant());
     }
@@ -58,6 +63,27 @@ public class BookingService {
         if (time.getSecond() != 0 || time.getNano() != 0) {
             throw new BadRequestException("INVALID_TIME",
                     "The " + field + " time must be on a whole minute, for example 2026-11-17T09:00:00+01:00.");
+        }
+    }
+
+    private void requireNoOverlap(NewBooking booking) {
+        bookings.findOverlapping(booking).stream().findFirst().ifPresent(existing -> {
+            throw new ConflictException("BOOKING_OVERLAP",
+                    "Room %d is already booked from %s to %s on %s.".formatted(
+                            existing.roomId(),
+                            existing.start().toLocalTime(),
+                            existing.end().toLocalTime(),
+                            existing.start().toLocalDate()));
+        });
+    }
+
+    private void requireDailyLimitNotReached(NewBooking booking) {
+        int limit = policy.maxActivePerOrganiserPerDay();
+        int active = bookings.countActiveForOrganiserOn(booking.organiser(), booking.start().toLocalDate());
+        if (active >= limit) {
+            throw new ConflictException("DAILY_LIMIT_REACHED",
+                    "%s already has %d bookings on %s, which is the daily maximum."
+                            .formatted(booking.organiser(), active, booking.start().toLocalDate()));
         }
     }
 }

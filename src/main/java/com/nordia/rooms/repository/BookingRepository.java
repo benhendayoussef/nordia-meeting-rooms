@@ -3,8 +3,10 @@ package com.nordia.rooms.repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Optional;
 
 import com.nordia.rooms.config.BookingPolicy;
@@ -57,6 +59,43 @@ public class BookingRepository {
                 .param("id", id)
                 .query(this::mapBooking)
                 .optional();
+    }
+
+    // Strict comparisons: a booking that ends exactly when another starts does not overlap it.
+    // A booking never spans two days, so the date narrows the search to the index.
+    public List<Booking> findOverlapping(NewBooking booking) {
+        return jdbc.sql("""
+                        SELECT id, room_id, start_at, end_at, organiser, subject, status
+                        FROM booking
+                        WHERE room_id = :roomId
+                          AND booking_date = :bookingDate
+                          AND status = :status
+                          AND start_at < :endAt
+                          AND end_at > :startAt
+                        ORDER BY start_at
+                        """)
+                .param("roomId", booking.roomId())
+                .param("bookingDate", booking.start().toLocalDate().toString())
+                .param("status", BookingStatus.ACTIVE.name())
+                .param("startAt", UTC_TEXT.format(booking.start()))
+                .param("endAt", UTC_TEXT.format(booking.end()))
+                .query(this::mapBooking)
+                .list();
+    }
+
+    public int countActiveForOrganiserOn(String organiser, LocalDate date) {
+        return jdbc.sql("""
+                        SELECT COUNT(*)
+                        FROM booking
+                        WHERE organiser = :organiser
+                          AND booking_date = :bookingDate
+                          AND status = :status
+                        """)
+                .param("organiser", organiser)
+                .param("bookingDate", date.toString())
+                .param("status", BookingStatus.ACTIVE.name())
+                .query(Integer.class)
+                .single();
     }
 
     private Booking mapBooking(ResultSet rs, int rowNum) throws SQLException {
