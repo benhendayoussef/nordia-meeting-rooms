@@ -3,6 +3,7 @@ package com.nordia.rooms.repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Optional;
 
 import com.nordia.rooms.model.Room;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -34,6 +35,17 @@ public class RoomRepository {
                 .param("minCapacity", minCapacity)
                 .query(this::mapRoom)
                 .list();
+    }
+
+    public Optional<Room> findById(int id) {
+        return jdbc.sql("""
+                        SELECT id, name, capacity, floor, equipment
+                        FROM room
+                        WHERE id = :id
+                        """)
+                .param("id", id)
+                .query(this::mapRoom)
+                .optional();
     }
 
     public void upsert(Room room) {
