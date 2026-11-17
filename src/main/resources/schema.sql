@@ -23,3 +23,9 @@ CREATE TABLE IF NOT EXISTS booking (
 CREATE INDEX IF NOT EXISTS idx_booking_room_date_status ON booking (room_id, booking_date, status);
 
 CREATE INDEX IF NOT EXISTS idx_booking_organiser_date_status ON booking (organiser, booking_date, status);
+
+CREATE TABLE IF NOT EXISTS app_user (
+    email TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    display_name TEXT NOT NULL
+);

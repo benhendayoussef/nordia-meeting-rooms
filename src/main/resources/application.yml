@@ -18,3 +18,16 @@ nordia:
     min-duration: 15m
     max-duration: 4h
     max-active-per-organiser-per-day: 3
+  jwt:
+    secret: ${NORDIA_JWT_SECRET:}
+    expiration: 1h
+  demo-users:
+    - email: alice@nordia.com
+      password: alice123
+      display-name: Alice Martin
+    - email: bob@nordia.com
+      password: bob123
+      display-name: Bob Durand
+    - email: carol@nordia.com
+      password: carol123
+      display-name: Carol Petit

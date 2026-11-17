@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 
+import com.nordia.rooms.util.JwtUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -67,6 +68,9 @@ class BookingControllerTest {
     @Autowired
     JdbcClient jdbc;
 
+    @Autowired
+    JwtUtils jwtUtils;
+
     @BeforeEach
     void startWithoutBookings() {
         jdbc.sql("DELETE FROM booking").update();
@@ -86,20 +90,10 @@ class BookingControllerTest {
                 .andExpect(jsonPath("$.status").value("ACTIVE"))
                 .andReturn().getResponse().getHeader("Location");
 
-        mockMvc.perform(get(location))
+        mockMvc.perform(get(location).header("Authorization", bearer("anna.martin@nordia.com")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.start").value("2026-11-17T09:00:00+01:00"))
                 .andExpect(jsonPath("$.status").value("ACTIVE"));
-    }
-
-    @Test
-    void trims_and_lower_cases_the_organiser() throws Exception {
-        postJson("""
-                {"roomId":1,"start":"2026-11-17T09:00:00+01:00","end":"2026-11-17T10:00:00+01:00",
-                 "organiser":"  Anna.Martin@Nordia.com ","subject":"Planning"}
-                """)
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.organiser").value("anna.martin@nordia.com"));
     }
 
     @ParameterizedTest
@@ -210,11 +204,22 @@ class BookingControllerTest {
     void refuses_an_unknown_property_in_the_body() throws Exception {
         postJson("""
                 {"roomId":1,"start":"2026-11-17T09:00:00+01:00","end":"2026-11-17T10:00:00+01:00",
-                 "organiser":"anna.martin@nordia.com","subject":"Planning","floor":2}
+                 "subject":"Planning","floor":2}
                 """)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"))
                 .andExpect(jsonPath("$.detail").value("Unknown property 'floor'."));
+    }
+
+    @Test
+    void refuses_an_organiser_in_the_body_because_it_comes_from_the_token() throws Exception {
+        postJson("""
+                {"roomId":1,"start":"2026-11-17T09:00:00+01:00","end":"2026-11-17T10:00:00+01:00",
+                 "organiser":"bob.durand@nordia.com","subject":"Planning"}
+                """)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"))
+                .andExpect(jsonPath("$.detail").value("Unknown property 'organiser'."));
     }
 
     @Test
@@ -227,8 +232,7 @@ class BookingControllerTest {
     @Test
     void refuses_a_missing_subject_with_a_field_error() throws Exception {
         postJson("""
-                {"roomId":1,"start":"2026-11-17T09:00:00+01:00","end":"2026-11-17T10:00:00+01:00",
-                 "organiser":"anna.martin@nordia.com"}
+                {"roomId":1,"start":"2026-11-17T09:00:00+01:00","end":"2026-11-17T10:00:00+01:00"}
                 """)
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
@@ -239,28 +243,17 @@ class BookingControllerTest {
     void refuses_a_subject_longer_than_200_characters() throws Exception {
         postJson("""
                 {"roomId":1,"start":"2026-11-17T09:00:00+01:00","end":"2026-11-17T10:00:00+01:00",
-                 "organiser":"anna.martin@nordia.com","subject":"%s"}
+                 "subject":"%s"}
                 """.formatted("x".repeat(201)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors[*].field").value(hasItem("subject")));
     }
 
     @Test
-    void refuses_an_invalid_email_with_a_field_error() throws Exception {
-        postJson("""
-                {"roomId":1,"start":"2026-11-17T09:00:00+01:00","end":"2026-11-17T10:00:00+01:00",
-                 "organiser":"not-an-email","subject":"Planning"}
-                """)
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
-                .andExpect(jsonPath("$.errors[*].field").value(hasItem("organiser")));
-    }
-
-    @Test
     void answers_404_when_the_room_does_not_exist() throws Exception {
         postJson("""
                 {"roomId":99,"start":"2026-11-17T09:00:00+01:00","end":"2026-11-17T10:00:00+01:00",
-                 "organiser":"anna.martin@nordia.com","subject":"Planning"}
+                 "subject":"Planning"}
                 """)
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ROOM_NOT_FOUND"))
@@ -269,7 +262,7 @@ class BookingControllerTest {
 
     @Test
     void answers_404_when_the_booking_does_not_exist() throws Exception {
-        mockMvc.perform(get("/api/bookings/42"))
+        mockMvc.perform(get("/api/bookings/42").header("Authorization", bearer("anna.martin@nordia.com")))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("BOOKING_NOT_FOUND"))
                 .andExpect(jsonPath("$.detail").value("Booking 42 does not exist."));
@@ -450,11 +443,22 @@ class BookingControllerTest {
 
     private ResultActions book(int roomId, String organiser, String start, String end) throws Exception {
         return postJson("""
-                {"roomId":%d,"start":"%s","end":"%s","organiser":"%s","subject":"Planning"}
-                """.formatted(roomId, start, end, organiser));
+                {"roomId":%d,"start":"%s","end":"%s","subject":"Planning"}
+                """.formatted(roomId, start, end), organiser);
     }
 
     private ResultActions postJson(String json) throws Exception {
-        return mockMvc.perform(post("/api/bookings").contentType(MediaType.APPLICATION_JSON).content(json));
+        return postJson(json, "anna.martin@nordia.com");
+    }
+
+    private ResultActions postJson(String json, String organiser) throws Exception {
+        return mockMvc.perform(post("/api/bookings")
+                .header("Authorization", bearer(organiser))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json));
+    }
+
+    private String bearer(String email) {
+        return "Bearer " + jwtUtils.generateAccessJwtToken(email);
     }
 }

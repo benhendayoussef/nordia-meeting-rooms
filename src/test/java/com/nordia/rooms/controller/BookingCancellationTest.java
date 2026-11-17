@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 
 import com.jayway.jsonpath.JsonPath;
+import com.nordia.rooms.util.JwtUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -91,6 +92,9 @@ class BookingCancellationTest {
     @Autowired
     SettableClock clock;
 
+    @Autowired
+    JwtUtils jwtUtils;
+
     @BeforeEach
     void startMondayMorningWithoutBookings() {
         clock.set(MONDAY_7AM_PARIS);
@@ -103,7 +107,7 @@ class BookingCancellationTest {
 
         cancel(id, ORGANISER).andExpect(status().isNoContent());
 
-        mockMvc.perform(get("/api/bookings/" + id))
+        mockMvc.perform(get("/api/bookings/" + id).header("Authorization", bearer(ORGANISER)))
                 .andExpect(jsonPath("$.status").value("CANCELLED"));
         book(ORGANISER, 9, 10).andExpect(status().isCreated());
     }
@@ -140,7 +144,7 @@ class BookingCancellationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("BOOKING_ALREADY_STARTED"));
 
-        mockMvc.perform(get("/api/bookings/" + id))
+        mockMvc.perform(get("/api/bookings/" + id).header("Authorization", bearer(ORGANISER)))
                 .andExpect(jsonPath("$.status").value("ACTIVE"));
     }
 
@@ -162,26 +166,20 @@ class BookingCancellationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("NOT_ORGANISER"));
 
-        mockMvc.perform(get("/api/bookings/" + id))
+        mockMvc.perform(get("/api/bookings/" + id).header("Authorization", bearer(ORGANISER)))
                 .andExpect(jsonPath("$.status").value("ACTIVE"));
     }
 
     @Test
-    void refuses_a_request_without_the_organiser_header() throws Exception {
+    void refuses_to_cancel_without_a_token() throws Exception {
         long id = bookOn17th(ORGANISER, 9, 10);
 
         mockMvc.perform(delete("/api/bookings/" + id))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
-    }
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
 
-    @Test
-    void refuses_a_blank_organiser_header() throws Exception {
-        long id = bookOn17th(ORGANISER, 9, 10);
-
-        cancel(id, "  ")
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        mockMvc.perform(get("/api/bookings/" + id).header("Authorization", bearer(ORGANISER)))
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
     }
 
     @Test
@@ -213,13 +211,18 @@ class BookingCancellationTest {
     }
 
     private ResultActions book(String organiser, int startHour, int endHour) throws Exception {
-        return mockMvc.perform(post("/api/bookings").contentType(MediaType.APPLICATION_JSON).content("""
+        return mockMvc.perform(post("/api/bookings").header("Authorization", bearer(organiser))
+                .contentType(MediaType.APPLICATION_JSON).content("""
                 {"roomId":1,"start":"2026-11-17T%02d:00:00+01:00","end":"2026-11-17T%02d:00:00+01:00",
-                 "organiser":"%s","subject":"Planning"}
-                """.formatted(startHour, endHour, organiser)));
+                 "subject":"Planning"}
+                """.formatted(startHour, endHour)));
+    }
+
+    private String bearer(String email) {
+        return "Bearer " + jwtUtils.generateAccessJwtToken(email);
     }
 
     private ResultActions cancel(long id, String organiser) throws Exception {
-        return mockMvc.perform(delete("/api/bookings/" + id).header("X-Organiser-Email", organiser));
+        return mockMvc.perform(delete("/api/bookings/" + id).header("Authorization", bearer(organiser)));
     }
 }

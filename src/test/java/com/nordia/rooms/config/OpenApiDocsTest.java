@@ -41,7 +41,9 @@ class OpenApiDocsTest {
                 .andExpect(jsonPath("$.info.title").value("Nordia Meeting Rooms API"))
                 .andExpect(jsonPath("$.paths").value(hasKey("/api/rooms")))
                 .andExpect(jsonPath("$.paths").value(hasKey("/api/rooms/{roomId}/bookings")))
+                .andExpect(jsonPath("$.paths").value(hasKey("/api/auth/login")))
                 .andExpect(jsonPath("$.paths").value(hasKey("/api/bookings")))
+                .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"))
                 .andExpect(jsonPath("$.paths").value(hasKey("/api/bookings/{id}")));
     }
 

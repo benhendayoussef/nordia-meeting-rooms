@@ -71,12 +71,13 @@ class BookingServiceTest {
             BookingRequest request = new BookingRequest(1,
                     OffsetDateTime.parse("2026-11-17T09:00:00+01:00"),
                     OffsetDateTime.parse("2026-11-17T10:00:00+01:00"),
-                    "person" + i + "@nordia.com", "Planning");
+                    "Planning");
+            String organiser = "person" + i + "@nordia.com";
             outcomes.add(executor.submit(() -> {
                 ready.countDown();
                 go.await();
                 try {
-                    bookingService.create(request);
+                    bookingService.create(request, organiser);
                     return null;
                 } catch (Throwable e) {
                     return e;

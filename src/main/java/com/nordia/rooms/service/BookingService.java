@@ -41,7 +41,7 @@ public class BookingService {
     // The connection starts IMMEDIATE transactions, so the checks and the insert
     // run under SQLite's write lock and two requests cannot book the same slot.
     @Transactional
-    public Booking create(BookingRequest request) {
+    public Booking create(BookingRequest request, String organiser) {
         requireWholeMinute("start", request.start());
         requireWholeMinute("end", request.end());
         roomService.getById(request.roomId());
@@ -50,7 +50,7 @@ public class BookingService {
                 request.roomId(),
                 request.start().atZoneSameInstant(policy.zone()),
                 request.end().atZoneSameInstant(policy.zone()),
-                request.organiser(),
+                organiser.trim().toLowerCase(Locale.ROOT),
                 request.subject());
         rules.forEach(rule -> rule.check(booking));
         requireNoOverlap(booking);
