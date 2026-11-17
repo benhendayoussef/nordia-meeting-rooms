@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -360,6 +361,66 @@ class BookingControllerTest {
         book(1, "anna.martin@nordia.com", "2026-11-17T09:30:00+01:00", "2026-11-17T10:30:00+01:00")
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("BOOKING_OVERLAP"));
+    }
+
+    @Test
+    void lists_a_rooms_bookings_for_the_day_sorted_by_start() throws Exception {
+        book(1, "anna.martin@nordia.com", "2026-11-17T14:00:00+01:00", "2026-11-17T15:00:00+01:00");
+        book(1, "bob.durand@nordia.com", "2026-11-17T09:00:00+01:00", "2026-11-17T10:00:00+01:00");
+        book(1, "carla.petit@nordia.com", "2026-11-17T11:00:00+01:00", "2026-11-17T12:00:00+01:00");
+
+        mockMvc.perform(get("/api/rooms/1/bookings").param("date", "2026-11-17"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[0].start").value("2026-11-17T09:00:00+01:00"))
+                .andExpect(jsonPath("$[1].start").value("2026-11-17T11:00:00+01:00"))
+                .andExpect(jsonPath("$[2].start").value("2026-11-17T14:00:00+01:00"))
+                .andExpect(jsonPath("$[0].organiser").value("bob.durand@nordia.com"))
+                .andExpect(jsonPath("$[0].status").value("ACTIVE"));
+    }
+
+    @Test
+    void leaves_out_other_days_other_rooms_and_cancelled_bookings_from_the_day() throws Exception {
+        book(1, "anna.martin@nordia.com", "2026-11-17T09:00:00+01:00", "2026-11-17T10:00:00+01:00");
+        book(1, "anna.martin@nordia.com", "2026-11-18T09:00:00+01:00", "2026-11-18T10:00:00+01:00");
+        book(2, "anna.martin@nordia.com", "2026-11-17T11:00:00+01:00", "2026-11-17T12:00:00+01:00");
+        insertCancelledBooking(1, "anna.martin@nordia.com", "2026-11-17T13:00:00Z", "2026-11-17T14:00:00Z");
+
+        mockMvc.perform(get("/api/rooms/1/bookings").param("date", "2026-11-17"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].roomId").value(1))
+                .andExpect(jsonPath("$[0].start").value("2026-11-17T09:00:00+01:00"));
+    }
+
+    @Test
+    void returns_an_empty_list_for_a_saturday() throws Exception {
+        mockMvc.perform(get("/api/rooms/1/bookings").param("date", "2026-11-21"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void answers_404_when_listing_the_bookings_of_an_unknown_room() throws Exception {
+        mockMvc.perform(get("/api/rooms/99/bookings").param("date", "2026-11-17"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("ROOM_NOT_FOUND"));
+    }
+
+    @Test
+    void refuses_to_list_the_bookings_without_a_date() throws Exception {
+        mockMvc.perform(get("/api/rooms/1/bookings"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"17-11-2026", "11/17/2026", "2026-13-45", "tomorrow"})
+    void refuses_to_list_the_bookings_for_an_invalid_date(String date) throws Exception {
+        mockMvc.perform(get("/api/rooms/1/bookings").param("date", date))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.errors[0].field").value("date"));
     }
 
     private void bookThreeTimesOn17th(String organiser) throws Exception {

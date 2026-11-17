@@ -102,6 +102,22 @@ public class BookingRepository {
                 .list();
     }
 
+    public List<Booking> findActiveByRoomAndDate(int roomId, LocalDate date) {
+        return jdbc.sql("""
+                        SELECT id, room_id, start_at, end_at, organiser, subject, status
+                        FROM booking
+                        WHERE room_id = :roomId
+                          AND booking_date = :bookingDate
+                          AND status = :status
+                        ORDER BY start_at
+                        """)
+                .param("roomId", roomId)
+                .param("bookingDate", date.toString())
+                .param("status", BookingStatus.ACTIVE.name())
+                .query(this::mapBooking)
+                .list();
+    }
+
     public int countActiveForOrganiserOn(String organiser, LocalDate date) {
         return jdbc.sql("""
                         SELECT COUNT(*)

@@ -1,6 +1,7 @@
 package com.nordia.rooms.exceptions;
 
 import com.nordia.rooms.controller.RoomController;
+import com.nordia.rooms.service.BookingService;
 import com.nordia.rooms.service.RoomService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +28,9 @@ class GlobalExceptionsHandlerTest {
 
     @MockitoBean
     RoomService roomService;
+
+    @MockitoBean
+    BookingService bookingService;
 
     @Test
     void hides_the_details_of_an_unexpected_exception() throws Exception {

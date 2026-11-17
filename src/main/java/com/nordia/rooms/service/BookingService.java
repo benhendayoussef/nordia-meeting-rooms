@@ -1,6 +1,7 @@
 package com.nordia.rooms.service;
 
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -60,6 +61,11 @@ public class BookingService {
 
     public Booking getById(long id) {
         return bookings.findById(id).orElseThrow(() -> ResourceNotFoundException.bookingNotFound(id));
+    }
+
+    public List<Booking> findActiveForRoomOn(int roomId, LocalDate date) {
+        roomService.getById(roomId);
+        return bookings.findActiveByRoomAndDate(roomId, date);
     }
 
     // A single conditional UPDATE decides; the booking is only read afterwards to explain why nothing changed.
