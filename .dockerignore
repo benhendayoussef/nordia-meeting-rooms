@@ -9,3 +9,4 @@ build/
 .claude/
 CLAUDE.md
 HELP.md
+.env

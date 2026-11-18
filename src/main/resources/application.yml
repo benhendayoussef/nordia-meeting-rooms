@@ -1,6 +1,8 @@
 spring:
   application:
     name: nordia-meeting-rooms
+  config:
+    import: optional:file:.env[.properties]
   datasource:
     url: jdbc:sqlite:${NORDIA_DB_PATH:nordia.db}?foreign_keys=on&transaction_mode=IMMEDIATE&busy_timeout=5000
   sql:

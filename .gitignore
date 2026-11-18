@@ -39,3 +39,6 @@ out/
 ### SQLite ###
 *.db
 *.db-journal
+
+### Environment ###
+.env
